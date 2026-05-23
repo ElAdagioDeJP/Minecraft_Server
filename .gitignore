@@ -1,0 +1,19 @@
+# Secrets
+.env
+*.env.local
+
+# Mods are NOT stored in git (640MB + a 246MB jar exceeds GitHub's 100MB file limit).
+# They live in Cloudflare R2 and are pulled at first boot. Keep a local copy to upload to R2.
+Mods/
+
+# Server runtime data (worlds, logs, configs) — never commit
+data/
+backups/
+*.log
+crash-reports/
+
+# rclone local config (use env vars instead)
+rclone.conf
+
+# Local tooling
+.claude/

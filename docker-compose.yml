@@ -1,0 +1,93 @@
+# Dokploy: deploy this as a "Compose" application.
+# Two services:
+#   mc       -> the Forge 1.20.1 server (built from ./Dockerfile)
+#   backups  -> hourly, crash-consistent backups to Cloudflare R2
+# All secrets/config come from .env (see .env.example).
+
+services:
+  mc:
+    build: .
+    container_name: mc
+    restart: unless-stopped
+    stdin_open: true          # keep STDIN open so you can attach a console
+    tty: true
+    init: true                # PID 1 init/reaper (replaces tini cleanly)
+    ports:
+      - "25565:25565"         # Minecraft. In Dokploy map this to your domain/port.
+    environment:
+      # --- Server type / version ---
+      EULA: "TRUE"            # you accept https://aka.ms/MinecraftEULA
+      TYPE: "FORGE"
+      VERSION: "1.20.1"
+      FORGE_VERSION: "47.4.10"
+
+      # --- Resources (host = 5GB / 2 cores) ---
+      # Heap below container limit so non-heap (metaspace for 90+ mods) + OS + backup fit.
+      MEMORY: "${MEMORY:-3584M}"
+      USE_AIKAR_FLAGS: "true"
+
+      # --- Performance tuning for a small box ---
+      VIEW_DISTANCE: "${VIEW_DISTANCE:-7}"
+      SIMULATION_DISTANCE: "${SIMULATION_DISTANCE:-5}"
+      MAX_PLAYERS: "${MAX_PLAYERS:-10}"
+      MAX_TICK_TIME: "120000"          # watchdog grace for heavy modded worldgen/Chunky
+      MOTD: "${MOTD:-Modded 1.20.1 SMP}"
+
+      # --- Console / RCON (used by you + the backup service) ---
+      ENABLE_RCON: "true"
+      RCON_PASSWORD: "${RCON_PASSWORD}"
+
+      # --- Mod seeding (first boot pulls from R2) ---
+      MODS_REMOTE_PATH: "${MODS_REMOTE_PATH:-r2:minecraftserverbackup/mods}"
+      FORCE_MOD_SYNC: "${FORCE_MOD_SYNC:-false}"
+      RCLONE_CONFIG_R2_TYPE: "s3"
+      RCLONE_CONFIG_R2_PROVIDER: "Cloudflare"
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: "${R2_ACCESS_KEY_ID}"
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY}"
+      RCLONE_CONFIG_R2_ENDPOINT: "${R2_ENDPOINT}"
+      RCLONE_CONFIG_R2_ACL: "private"
+      RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+
+      TZ: "${TZ:-America/Caracas}"
+    volumes:
+      - mc-data:/data
+
+  backups:
+    image: itzg/mc-backup
+    container_name: mc-backups
+    restart: unless-stopped
+    depends_on:
+      - mc
+    environment:
+      BACKUP_INTERVAL: "1h"            # hourly
+      INITIAL_DELAY: "3m"              # let the server finish booting first
+      PRUNE_BACKUPS_COUNT: "${PRUNE_BACKUPS_COUNT:-72}"   # keep newest 72 on R2 (~3 days)
+
+      # Crash-consistent: backup service runs save-off / save-all / save-on via RCON.
+      RCON_HOST: "mc"
+      RCON_PORT: "25575"
+      RCON_PASSWORD: "${RCON_PASSWORD}"
+
+      # Keep archives SMALL: world + player data + configs only.
+      # Excludes mods/libraries (re-seeded from R2 anyway) and noise.
+      EXCLUDES: "*.jar,cache,logs,crash-reports,libraries,mods,*.tmp,*.log,downloads,.cache,versions"
+
+      # --- Upload to Cloudflare R2 via rclone ---
+      BACKUP_METHOD: "rclone"
+      RCLONE_REMOTE: "r2"
+      RCLONE_DEST_DIR: "${BACKUP_DEST_DIR:-minecraftserverbackup/world-backups}"
+      RCLONE_COMPRESS_METHOD: "gzip"
+      RCLONE_CONFIG_R2_TYPE: "s3"
+      RCLONE_CONFIG_R2_PROVIDER: "Cloudflare"
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: "${R2_ACCESS_KEY_ID}"
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY}"
+      RCLONE_CONFIG_R2_ENDPOINT: "${R2_ENDPOINT}"
+      RCLONE_CONFIG_R2_ACL: "private"
+      RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+
+      TZ: "${TZ:-America/Caracas}"
+    volumes:
+      - mc-data:/data:ro               # read-only; backup only reads
+
+volumes:
+  mc-data:
