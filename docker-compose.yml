@@ -26,6 +26,11 @@ services:
       MEMORY: "${MEMORY:-3584M}"
       USE_AIKAR_FLAGS: "true"
 
+      # --- World settings ---
+      SEED: "2586971549138948968"
+      MODE: "survival"
+      DIFFICULTY: "hard"
+
       # --- Performance tuning for a small box ---
       VIEW_DISTANCE: "${VIEW_DISTANCE:-7}"
       SIMULATION_DISTANCE: "${SIMULATION_DISTANCE:-5}"
