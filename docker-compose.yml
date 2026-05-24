@@ -8,7 +8,7 @@ services:
   mc:
     build: .
     container_name: mc
-    restart: unless-stopped
+    restart: on-failure:3
     stdin_open: true          # keep STDIN open so you can attach a console
     tty: true
     init: true                # PID 1 init/reaper (replaces tini cleanly)
@@ -64,7 +64,7 @@ services:
     depends_on:
       - mc
     environment:
-      BACKUP_INTERVAL: "1h"            # hourly
+      BACKUP_INTERVAL: "48h"            # hourly
       INITIAL_DELAY: "3m"              # let the server finish booting first
       PRUNE_BACKUPS_COUNT: "${PRUNE_BACKUPS_COUNT:-72}"   # keep newest 72 on R2 (~3 days)
 
